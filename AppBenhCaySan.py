@@ -16,7 +16,8 @@ st.write("Hệ thống AI chẩn đoán bệnh lá sắn trực tuyến.")
 # --- TẢI MÔ HÌNH ---
 @st.cache_resource
 def load_model():
-    return tf.keras.models.load_model('best_model_cassava.h5')
+    model = tf.keras.models.load_model('best_model_cassava.h5', compile=False)
+    return model
 
 with st.spinner('Đang tải bộ não AI...'):
     model = load_model()
