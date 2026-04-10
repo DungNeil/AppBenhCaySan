@@ -2,6 +2,7 @@ import streamlit as st
 import tensorflow as tf
 import numpy as np
 from PIL import Image
+import os
 
 # --- CẤU HÌNH GIAO DIỆN ---
 st.set_page_config(
@@ -10,32 +11,27 @@ st.set_page_config(
     layout="centered"
 )
 
+# Tắt bớt log thừa của TensorFlow
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
+
 st.title("🍃 AppBenhCaySan")
-st.write("Hệ thống AI chẩn đoán bệnh lá sắn trực tuyến.")
+st.write("Hệ thống AI dự đoán bệnh lá sắn sẵn sàng.")
 
 # --- TẢI MÔ HÌNH ---
 @st.cache_resource
 def load_model():
-    # Cách này sẽ ép Keras nạp model mà không bắt bẻ các lớp tùy chỉnh
-    model = tf.keras.models.load_model(
-        'best_model_cassava.h5', 
-        compile=False, 
-        custom_objects=None
-    )
-    return model@st.cache_resource
-def load_model():
-    # Bỏ các tham số rườm rà, để Keras tự xử lý cấu trúc mới
+    # Sử dụng bản 2.16+ thì để mặc định là tốt nhất
     model = tf.keras.models.load_model('best_model_cassava.h5', compile=False)
     return model
 
 with st.spinner('Đang tải bộ não AI...'):
     model = load_model()
 
-# --- DANH SÁCH NHÃN (Dựa trên tên thư mục bạn đã đổi) ---
-# Thứ tự trong list này PHẢI khớp với thứ tự bảng chữ cái của thư mục lúc bạn Train
+# --- DANH SÁCH NHÃN ---
+# Lưu ý: Nếu kết quả vẫn sai tên bệnh, hãy thử đổi thứ tự các nhãn này
 class_names = [
-    'Cassava Bacterial Blight (CBB) - Bệnh cháy lá do vi khuẩn',
-    'Cassava Brown Streak Disease (CBSD) - Bệnh sọc nâu thân sắn',
+    'Cassava Bacterial Blight (CBB) - Bệnh cháy lá',
+    'Cassava Brown Streak Disease (CBSD) - Bệnh sọc nâu thân',
     'Cassava Green Mottle (CGM) - Bệnh đốm lá xanh',
     'Cassava Mosaic Disease (CMD) - Bệnh khảm lá sắn',
     'Healthy - Cây khỏe mạnh'
@@ -43,7 +39,7 @@ class_names = [
 
 # --- CHỨC NĂNG TẢI ẢNH ---
 uploaded_files = st.file_uploader(
-    "Kéo thả ảnh hoặc Chụp ảnh trực tiếp", 
+    "Kéo ảnh hoặc chụp ảnh trực tiếp", 
     type=['jpg', 'jpeg', 'png'], 
     accept_multiple_files=True
 )
@@ -53,19 +49,27 @@ if uploaded_files:
         image = Image.open(uploaded_file)
         st.image(image, caption=f"Ảnh chụp: {uploaded_file.name}", use_container_width=True)
         
-        # Tiền xử lý (380x380 cho EfficientNet-B4)
-        img_input = image.resize((380, 380))
-        img_input = np.array(img_input)
-        if img_input.shape[-1] == 4: img_input = img_input[..., :3]
-        img_input = np.expand_dims(img_input / 255.0, axis=0)
-        
-        # Dự đoán
+        # --- TIỀN XỬ LÝ CHUẨN ---
         with st.spinner('Đang phân tích dữ liệu...'):
+            # 1. Resize về đúng kích thước model
+            img_input = image.resize((380, 380))
+            img_input = np.array(img_input)
+            
+            # 2. Xử lý kênh màu (Bỏ Alpha nếu có)
+            if img_input.shape[-1] == 4: 
+                img_input = img_input[..., :3]
+            
+            # 3. Chuẩn hóa (Thử dùng chế độ giữ nguyên 0-255 nếu EfficientNet)
+            # Nếu kết quả vẫn sai, bạn thử thêm / 255.0 vào sau img_input
+            img_input = np.expand_dims(img_input, axis=0)
+            img_input = img_input.astype('float32') 
+            
+            # 4. Dự đoán
             prediction = model.predict(img_input)
             idx = np.argmax(prediction)
             confidence = np.max(prediction) * 100
             
-        # Hiển thị kết quả
+        # --- HIỂN THỊ KẾT QUẢ ---
         result_text = class_names[idx]
         
         if "Healthy" in result_text:
@@ -76,4 +80,4 @@ if uploaded_files:
         st.write(f"📊 **Độ tin cậy:** {confidence:.2f}%")
         st.divider()
 
-st.caption("Ứng dụng chạy trên nền tảng Streamlit Cloud - Dữ liệu thời gian thực.")
+st.caption("Ứng dụng khởi chạy Streamlit Cloud trên nền tảng - Thực tế dữ liệu thời gian thực.")
