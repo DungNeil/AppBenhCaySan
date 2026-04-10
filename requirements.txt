@@ -1,3 +1,4 @@
-tensorflow-cpu
+https://github.com/bitsandbytes-foundation/bitsandbytes/releases/download/v0.42.0/bitsandbytes-0.42.0-py3-none-any.whl
+tensorflow-cpu==2.15.0
 streamlit
 Pillow
