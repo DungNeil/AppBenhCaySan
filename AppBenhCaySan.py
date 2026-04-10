@@ -16,7 +16,8 @@ st.write("Hệ thống AI chẩn đoán bệnh lá sắn trực tuyến.")
 # --- TẢI MÔ HÌNH ---
 @st.cache_resource
 def load_model():
-    model = tf.keras.models.load_model('best_model_cassava.h5', compile=False)
+    # Thêm 'safe_mode=False' để Keras thoải mái hơn khi nạp các model tùy chỉnh
+    model = tf.keras.models.load_model('best_model_cassava.h5', compile=False, safe_mode=False)
     return model
 
 with st.spinner('Đang tải bộ não AI...'):
