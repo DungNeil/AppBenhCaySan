@@ -16,8 +16,12 @@ st.write("Hệ thống AI chẩn đoán bệnh lá sắn trực tuyến.")
 # --- TẢI MÔ HÌNH ---
 @st.cache_resource
 def load_model():
-    # Chỉ giữ lại compile=False
-    model = tf.keras.models.load_model('best_model_cassava.h5', compile=False)
+    # Cách này sẽ ép Keras nạp model mà không bắt bẻ các lớp tùy chỉnh
+    model = tf.keras.models.load_model(
+        'best_model_cassava.h5', 
+        compile=False, 
+        custom_objects=None
+    )
     return model
 
 with st.spinner('Đang tải bộ não AI...'):
