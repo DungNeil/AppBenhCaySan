@@ -22,6 +22,10 @@ def load_model():
         compile=False, 
         custom_objects=None
     )
+    return model@st.cache_resource
+def load_model():
+    # Bỏ các tham số rườm rà, để Keras tự xử lý cấu trúc mới
+    model = tf.keras.models.load_model('best_model_cassava.h5', compile=False)
     return model
 
 with st.spinner('Đang tải bộ não AI...'):
