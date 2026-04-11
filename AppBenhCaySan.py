@@ -9,30 +9,45 @@ import numpy as np
 import os
 
 # --- CẤU HÌNH GIAO DIỆN ---
+# Chuyển layout sang 'wide' để đủ chỗ hiển thị 5 cột ngang
 st.set_page_config(
     page_title="AI Chẩn Đoán Bệnh Sắn",
     page_icon="🌱",
-    layout="centered"
+    layout="wide" 
 )
 
-# Thêm CSS để giao diện trông hiện đại hơn
+# CSS Custom cho các Thẻ kết quả (Cards)
 st.markdown("""
     <style>
-    .main {
-        background-color: #f5f7f9;
-    }
+    .main { background-color: #f4f6f9; }
     .stButton>button {
         width: 100%;
-        border-radius: 10px;
-        height: 3em;
+        border-radius: 8px;
+        height: 3.5em;
         background-color: #2e7d32;
         color: white;
+        font-weight: bold;
+        font-size: 16px;
     }
+    .result-card {
+        padding: 15px;
+        border-radius: 10px;
+        margin-top: 10px;
+        margin-bottom: 20px;
+        text-align: center;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+    }
+    .healthy { background-color: #d4edda; color: #155724; border-left: 5px solid #28a745; }
+    .disease { background-color: #f8d7da; color: #721c24; border-left: 5px solid #dc3545; }
+    .disease-name-vn { font-size: 16px; font-weight: bold; margin-bottom: 5px; }
+    .disease-name-en { font-size: 12px; font-style: italic; opacity: 0.8; }
+    .conf-score { font-size: 14px; margin-top: 8px; font-weight: bold; }
     </style>
     """, unsafe_allow_html=True)
 
-st.title("🌱 AI Chẩn Đoán Bệnh Lá Sắn")
-st.write("Giải pháp hỗ trợ nông dân phát hiện bệnh sớm bằng Trí tuệ nhân tạo.")
+st.title("🌱 AI Chẩn Đoán Bệnh Lá Sắn (Hệ thống xử lý hàng loạt)")
+st.write("Tải lên một hoặc nhiều ảnh cùng lúc để hệ thống tự động phân tích và đưa ra phác đồ chẩn đoán.")
+st.write("---")
 
 # --- 1. ĐỊNH NGHĨA THÔNG SỐ ---
 CLASS_NAMES = [
@@ -46,23 +61,20 @@ CLASS_NAMES = [
 MODEL_PATH = 'best_model_torchvision.pth'
 IMG_SIZE = 380
 
-# --- 2. TẢI MÔ HÌNH (CACHE ĐỂ CHẠY NHANH) ---
+# --- 2. TẢI MÔ HÌNH ---
 @st.cache_resource
 def load_model():
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    # Khởi tạo EfficientNet-B4
     model = models.efficientnet_b4()
-    # Sửa lại lớp phân loại (5 lớp)
     model.classifier[1] = nn.Linear(model.classifier[1].in_features, 5)
     
-    # Kiểm tra file model có tồn tại không
     if os.path.exists(MODEL_PATH):
         model.load_state_dict(torch.load(MODEL_PATH, map_location=device))
         model.to(device)
         model.eval()
         return model, device
     else:
-        st.error(f"❌ Không tìm thấy file {MODEL_PATH}! Hãy đảm bảo file này nằm cùng thư mục với app.py.")
+        st.error(f"❌ Không tìm thấy file mô hình '{MODEL_PATH}'.")
         return None, None
 
 # --- 3. TIỀN XỬ LÝ ẢNH ---
@@ -76,59 +88,77 @@ def preprocess_image(image):
     return transform(image=image_np)['image'].unsqueeze(0)
 
 # --- 4. GIAO DIỆN CHỌN ẢNH ---
-# Cho phép chọn giữa tải file hoặc dùng camera (rất tiện khi ra đồng)
-tab1, tab2 = st.tabs(["📁 Tải ảnh lên", "📸 Chụp ảnh trực tiếp"])
+tab1, tab2 = st.tabs(["📁 Tải hàng loạt ảnh", "📸 Chụp ảnh tại vườn"])
 
 with tab1:
-    file_upload = st.file_uploader("Chọn ảnh lá sắn từ máy...", type=['jpg', 'png', 'jpeg'])
+    # Bật tính năng accept_multiple_files
+    uploaded_files = st.file_uploader("Kéo thả nhiều ảnh lá sắn vào đây...", type=['jpg', 'png', 'jpeg'], accept_multiple_files=True)
 with tab2:
-    camera_upload = st.camera_input("Chụp ảnh lá sắn ngay bây giờ")
+    camera_upload = st.camera_input("Sử dụng Camera")
 
-input_file = file_upload if file_upload is not None else camera_upload
+# Gom tất cả ảnh cần xử lý vào 1 list
+images_to_process = []
+if uploaded_files:
+    images_to_process.extend(uploaded_files)
+if camera_upload:
+    images_to_process.append(camera_upload)
 
-if input_file is not None:
-    image = Image.open(input_file)
-    st.image(image, caption='Ảnh đã chọn', use_container_width=True)
+# --- 5. HỆ THỐNG XỬ LÝ LƯỚI 5 CỘT ---
+if images_to_process:
+    st.info(f"📁 Đã nhận dạng được **{len(images_to_process)}** bức ảnh chờ xử lý.")
     
-    if st.button('🚀 Bắt đầu chẩn đoán'):
+    if st.button('🚀 KÍCH HOẠT HỆ THỐNG CHẨN ĐOÁN'):
         model, device = load_model()
         
         if model:
-            with st.spinner('Đang phân tích vết bệnh...'):
-                input_tensor = preprocess_image(image).to(device)
-                with torch.no_grad():
-                    output = model(input_tensor)
-                    prob = torch.nn.functional.softmax(output, dim=1)
-                    confidence, predicted = torch.max(prob, 1)
+            st.success("✅ Hệ thống đang tiến hành quét...")
+            
+            # Thuật toán cắt danh sách ảnh thành từng nhóm 5 tấm
+            chunk_size = 5
+            for i in range(0, len(images_to_process), chunk_size):
+                cols = st.columns(5) # Tạo 5 cột trên 1 hàng ngang
+                chunk = images_to_process[i : i + chunk_size]
                 
-                # --- 5. HIỂN THỊ KẾT QUẢ ---
-                res_idx = predicted.item()
-                conf_score = confidence.item()
-                
-                st.success("✅ Phân tích hoàn tất!")
-                
-                # Hiển thị kết quả nổi bật
-                st.markdown(f"### Kết quả: **{CLASS_NAMES[res_idx]}**")
-                st.markdown(f"### Độ tin cậy: **{conf_score*100:.2f}%**")
-                
-                # Thanh Progress bar thể hiện độ tin cậy
-                st.progress(conf_score)
-                
-                # Đưa ra lời khuyên dựa trên kết quả
-                if res_idx == 4: # Healthy
-                    st.balloons()
-                    st.info("Cây đang phát triển rất tốt. Hãy tiếp tục theo dõi định kỳ nhé!")
-                else:
-                    st.warning("Cảnh báo: Phát hiện triệu chứng bệnh. Bạn nên tham khảo ý kiến chuyên gia nông nghiệp để có biện pháp xử lý kịp thời.")
+                # Rải từng ảnh vào từng cột tương ứng
+                for j, file_data in enumerate(chunk):
+                    with cols[j]:
+                        try:
+                            # 1. Hiển thị ảnh
+                            image = Image.open(file_data)
+                            st.image(image, use_container_width=True)
+                            
+                            # 2. Phân tích AI
+                            with st.spinner('Đang quét...'):
+                                input_tensor = preprocess_image(image).to(device)
+                                with torch.no_grad():
+                                    output = model(input_tensor)
+                                    prob = torch.nn.functional.softmax(output, dim=1)
+                                    confidence, predicted = torch.max(prob, 1)
+                                    
+                            res_idx = predicted.item()
+                            conf_score = confidence.item()
+                            
+                            # 3. Tách chuỗi Tên bệnh để làm đẹp
+                            full_name = CLASS_NAMES[res_idx]
+                            name_en, name_vn = full_name.split(' - ')
+                            
+                            # 4. Hiển thị Thẻ kết quả (Màu Xanh nếu khỏe, Đỏ nếu bệnh)
+                            status_class = "healthy" if res_idx == 4 else "disease"
+                            
+                            st.markdown(f"""
+                            <div class="result-card {status_class}">
+                                <div class="disease-name-vn">{name_vn}</div>
+                                <div class="disease-name-en">{name_en}</div>
+                                <div class="conf-score">Độ tự tin: {conf_score*100:.1f}%</div>
+                            </div>
+                            """, unsafe_allow_html=True)
+                            
+                            # Thanh Progress Bar nhỏ ở dưới
+                            st.progress(conf_score)
+                            
+                        except Exception as e:
+                            st.error(f"Lỗi đọc ảnh: {e}")
 
-# --- 6. THÔNG TIN BỔ SUNG ---
-with st.sidebar:
-    st.image("https://upload.wikimedia.org/wikipedia/commons/4/4e/Cassava_leaf.jpg", caption="Lá sắn khỏe mạnh")
-    st.info("""
-    **Hướng dẫn chụp ảnh:**
-    1. Chụp gần mặt lá (khoảng 20-30cm).
-    2. Đảm bảo đủ ánh sáng.
-    3. Đặt vết bệnh ở trung tâm ảnh.
-    """)
-    st.write("---")
-    st.write("© 2026 - Đồ án tốt nghiệp: Nhận dạng bệnh trên lá cây")
+# Footer
+st.markdown("---")
+st.markdown("<div style='text-align: center; color: gray;'>© 2026 - Hệ thống AI hỗ trợ Nông nghiệp Thông minh</div>", unsafe_allow_html=True)
