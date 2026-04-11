@@ -29,7 +29,7 @@ st.markdown("""
         color: white;
     }
     </style>
-    """, unsafe_allow_stdio=True)
+    """, unsafe_allow_html=True)
 
 st.title("🌱 AI Chẩn Đoán Bệnh Lá Sắn")
 st.write("Giải pháp hỗ trợ nông dân phát hiện bệnh sớm bằng Trí tuệ nhân tạo.")
