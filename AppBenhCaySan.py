@@ -16,7 +16,10 @@ st.set_page_config(
     layout="wide"
 )
 
-# CSS Custom
+# Thêm Ngưỡng Tự Tin (Dưới 60% sẽ loại bỏ)
+CONF_THRESHOLD = 0.60 
+
+# CSS Custom cho thẻ kết quả
 st.markdown("""
     <style>
     .main { background-color: #f8f9fa; }
@@ -36,7 +39,10 @@ st.markdown("""
     }
     .healthy { background-color: #e8f5e9; color: #2e7d32; border-bottom: 4px solid #28a745; }
     .disease { background-color: #ffebee; color: #c62828; border-bottom: 4px solid #dc3545; }
-    .vn-name { font-size: 15px; font-weight: bold; margin-bottom: 4px;}
+    .unknown { background-color: #f1f3f5; color: #6c757d; border-bottom: 4px solid #adb5bd; } /* Màu xám cho No Data */
+    
+    .vn-name { font-size: 15px; font-weight: bold; margin-bottom: 2px;}
+    .en-name { font-size: 12px; font-style: italic; margin-bottom: 8px; opacity: 0.8;}
     .conf-score { font-size: 13px; opacity: 0.9; }
     </style>
     """, unsafe_allow_html=True)
@@ -76,7 +82,7 @@ def preprocess(image):
     ])
     return transform(image=np.array(image.convert('RGB')))['image'].unsqueeze(0)
 
-# --- 3. GIAO DIỆN NHẬP DỮ LIỆU (SIDEBAR) ---
+# --- 3. GIAO DIỆN NHẬP DỮ LIỆU ---
 with st.sidebar:
     st.header("⚙️ Nguồn dữ liệu")
     tab1, tab2 = st.tabs(["📁 Tải ảnh", "📸 Camera"])
@@ -91,7 +97,6 @@ with st.sidebar:
         st.cache_resource.clear()
         st.rerun()
 
-# Gom ảnh vào list xử lý
 images_to_process = []
 if uploaded_files:
     images_to_process.extend(uploaded_files)
@@ -116,35 +121,49 @@ if images_to_process:
                         prob = torch.nn.functional.softmax(output, dim=1)
                         conf, pred = torch.max(prob, 1)
                     
-                    full_name = CLASS_NAMES[pred.item()]
-                    en_name, vn_name = full_name.split(' - ')
+                    conf_score = conf.item()
                     
-                    # Xác định tên file (Xử lý riêng cho ảnh từ Camera)
+                    # --- BỘ LỌC NO DATA ---
+                    if conf_score < CONF_THRESHOLD:
+                        vn_name = "Không nhận diện được"
+                        en_name = "No Data / Out of distribution"
+                        css_class = "unknown"
+                        pred_id = -1 # Đánh dấu là ảnh không hợp lệ
+                    else:
+                        full_name = CLASS_NAMES[pred.item()]
+                        en_name, vn_name = full_name.split(' - ')
+                        css_class = "healthy" if pred.item() == 4 else "disease"
+                        pred_id = pred.item()
+                    
                     file_name_display = file.name if hasattr(file, 'name') and "camera_input" not in file.name else "Ảnh từ Camera"
                     
                     results_list.append({
                         "Tên file": file_name_display,
                         "Chẩn đoán": vn_name,
-                        "Mã bệnh": pred.item(),
-                        "Độ tin cậy (%)": round(conf.item()*100, 2),
-                        "img_data": img
+                        "Tiếng Anh": en_name,
+                        "Mã bệnh": pred_id,
+                        "Độ tin cậy (%)": round(conf_score*100, 2),
+                        "img_data": img,
+                        "css_class": css_class
                     })
 
-            # --- 5. BẢNG THỐNG KÊ (ANALYTICS) ---
+            # --- 5. BẢNG THỐNG KÊ ---
             df = pd.DataFrame(results_list)
+            valid_df = df[df['Mã bệnh'] != -1] # Chỉ thống kê trên những lá sắn hợp lệ
             
             st.subheader("📈 Thống kê tổng quan")
             m1, m2, m3 = st.columns(3)
-            m1.metric("Tổng số mẫu quét", len(df))
+            m1.metric("Tổng số ảnh đã tải", len(df))
             
-            health_rate = len(df[df['Mã bệnh']==4]) / len(df) * 100
-            m2.metric("Tỷ lệ cây khỏe", f"{health_rate:.1f}%")
-            
-            most_common = df['Chẩn đoán'].mode()[0]
-            m3.metric("Loại phổ biến nhất", most_common)
+            if len(valid_df) > 0:
+                health_rate = len(valid_df[valid_df['Mã bệnh']==4]) / len(valid_df) * 100
+                m2.metric("Tỷ lệ cây khỏe (Trên ảnh hợp lệ)", f"{health_rate:.1f}%")
+                most_common = valid_df['Chẩn đoán'].mode()[0]
+                m3.metric("Loại phổ biến nhất", most_common)
+            else:
+                m2.metric("Tỷ lệ cây khỏe", "N/A")
+                m3.metric("Loại phổ biến nhất", "Không có dữ liệu hợp lệ")
 
-            # Biểu đồ cột
-            st.bar_chart(df['Chẩn đoán'].value_counts(), color="#2e7d32")
             st.divider()
 
             # --- 6. HIỂN THỊ LƯỚI ẢNH 5 CỘT ---
@@ -156,15 +175,14 @@ if images_to_process:
                 
                 for j, res in enumerate(chunk):
                     with cols[j]:
-                        # Tên file
                         st.markdown(f'<div class="file-name" title="{res["Tên file"]}">{res["Tên file"]}</div>', unsafe_allow_html=True)
-                        # Ảnh
                         st.image(res['img_data'], use_container_width=True)
-                        # Thẻ kết quả
-                        css_class = "healthy" if res['Mã bệnh'] == 4 else "disease"
+                        
+                        # Hiển thị thẻ kết quả có cả tiếng Anh và Việt
                         st.markdown(f"""
-                            <div class="result-card {css_class}">
+                            <div class="result-card {res['css_class']}">
                                 <div class="vn-name">{res['Chẩn đoán']}</div>
+                                <div class="en-name">{res['Tiếng Anh']}</div>
                                 <div class="conf-score">Tự tin: {res['Độ tin cậy (%)']}%</div>
                             </div>
                         """, unsafe_allow_html=True)
@@ -173,6 +191,5 @@ else:
     st.markdown("""
         <div style='text-align: center; padding: 50px; background-color: white; border-radius: 10px; margin-top: 20px;'>
             <h3 style='color: #888;'>👈 Vui lòng thêm ảnh từ thanh công cụ bên trái để bắt đầu</h3>
-            <p style='color: #aaa;'>Hệ thống hỗ trợ xử lý hàng loạt nhiều ảnh cùng lúc hoặc chụp trực tiếp từ Camera.</p>
         </div>
     """, unsafe_allow_html=True)
