@@ -39,7 +39,7 @@ st.markdown("""
     }
     .healthy { background-color: #e8f5e9; color: #2e7d32; border-bottom: 4px solid #28a745; }
     .disease { background-color: #ffebee; color: #c62828; border-bottom: 4px solid #dc3545; }
-    .unknown { background-color: #f1f3f5; color: #6c757d; border-bottom: 4px solid #adb5bd; } /* Màu xám cho No Data */
+    .nodata { background-color: #fff3cd; color: #856404; border-bottom: 4px solid #ffc107; } /* Màu vàng cảnh báo nhẹ nhàng */
     
     .vn-name { font-size: 15px; font-weight: bold; margin-bottom: 2px;}
     .en-name { font-size: 12px; font-style: italic; margin-bottom: 8px; opacity: 0.8;}
@@ -125,15 +125,17 @@ if images_to_process:
                     
                     # --- BỘ LỌC NO DATA ---
                     if conf_score < CONF_THRESHOLD:
-                        vn_name = "Không nhận diện được"
-                        en_name = "No Data / Out of distribution"
-                        css_class = "unknown"
-                        pred_id = -1 # Đánh dấu là ảnh không hợp lệ
+                        vn_name = "Không có dữ liệu hợp lệ"
+                        en_name = "No Data"
+                        css_class = "nodata"
+                        pred_id = -1 
+                        conf_html = '<div class="conf-score">Vui lòng tải ảnh lá sắn</div>'
                     else:
                         full_name = CLASS_NAMES[pred.item()]
                         en_name, vn_name = full_name.split(' - ')
                         css_class = "healthy" if pred.item() == 4 else "disease"
                         pred_id = pred.item()
+                        conf_html = f'<div class="conf-score">Tự tin: {round(conf_score*100, 2)}%</div>'
                     
                     file_name_display = file.name if hasattr(file, 'name') and "camera_input" not in file.name else "Ảnh từ Camera"
                     
@@ -142,7 +144,7 @@ if images_to_process:
                         "Chẩn đoán": vn_name,
                         "Tiếng Anh": en_name,
                         "Mã bệnh": pred_id,
-                        "Độ tin cậy (%)": round(conf_score*100, 2),
+                        "conf_html": conf_html, # Lưu riêng đoạn mã HTML của phần trăm
                         "img_data": img,
                         "css_class": css_class
                     })
@@ -176,14 +178,16 @@ if images_to_process:
                 for j, res in enumerate(chunk):
                     with cols[j]:
                         st.markdown(f'<div class="file-name" title="{res["Tên file"]}">{res["Tên file"]}</div>', unsafe_allow_html=True)
+                        
+                        # ẢNH VẪN HIỂN THỊ BÌNH THƯỜNG Ở ĐÂY
                         st.image(res['img_data'], use_container_width=True)
                         
-                        # Hiển thị thẻ kết quả có cả tiếng Anh và Việt
+                        # HIỂN THỊ THẺ KẾT QUẢ
                         st.markdown(f"""
                             <div class="result-card {res['css_class']}">
                                 <div class="vn-name">{res['Chẩn đoán']}</div>
                                 <div class="en-name">{res['Tiếng Anh']}</div>
-                                <div class="conf-score">Tự tin: {res['Độ tin cậy (%)']}%</div>
+                                {res['conf_html']}
                             </div>
                         """, unsafe_allow_html=True)
 
