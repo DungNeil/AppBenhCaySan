@@ -1,4 +1,6 @@
-tensorflow>=2.16.1
 streamlit
-Pillow
-numpy<2.0.0
+torch
+torchvision
+albumentations
+pillow
+numpy
