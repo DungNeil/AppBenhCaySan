@@ -36,7 +36,7 @@ st.markdown("""
     }
     .healthy { background-color: #e8f5e9; color: #2e7d32; border-bottom: 4px solid #28a745; }
     .disease { background-color: #ffebee; color: #c62828; border-bottom: 4px solid #dc3545; }
-    .nodata { background-color: #fff3cd; color: #856404; border-bottom: 4px solid #ffc107; } /* Màu vàng cảnh báo nhẹ nhàng */
+    .nodata { background-color: #fff3cd; color: #856404; border-bottom: 4px solid #ffc107; } 
     
     .vn-name { font-size: 15px; font-weight: bold; margin-bottom: 2px;}
     .en-name { font-size: 12px; font-style: italic; margin-bottom: 8px; opacity: 0.8;}
@@ -44,7 +44,7 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-st.title("🌱 Dashboard Chẩn Đoán Bệnh Lá Cây Sắn")
+st.title("🌱 Dashboard Chẩn Đoán Bệnh Lá Sắn")
 st.write("Hệ thống Trí tuệ Nhân tạo hỗ trợ phân tích và nhận diện bệnh tự động.")
 
 # --- 1. THÔNG SỐ VÀ DANH SÁCH BỆNH ---
@@ -111,7 +111,7 @@ if images_to_process:
             
             with st.spinner('AI đang quét và phân tích dữ liệu...'):
                 for file in images_to_process:
-                    try: # Thêm vòng bảo vệ: Nếu ảnh bị lỗi, bỏ qua ảnh đó chứ không sập App
+                    try:
                         img = Image.open(file)
                         input_tensor = preprocess(img).to(device)
                         with torch.no_grad():
@@ -121,23 +121,17 @@ if images_to_process:
                         
                         conf_score = conf.item()
                         
-                        # --- BỘ LỌC NO DATA ---
-                        conf_score = conf.item()
-                        
                         # --- BỘ LỌC NO DATA (NGƯỠNG KÉP) ---
-                        # Đặt 2 ngưỡng khác nhau
                         HEALTHY_THRESHOLD = 0.60  # Ép ảnh Khỏe mạnh phải tự tin cao (Chặn ảnh rác)
-                        DISEASE_THRESHOLD = 0.40  # Mở cửa cho ảnh Bệnh với tự tin thấp hơn
+                        DISEASE_THRESHOLD = 0.40  # Mở cửa cho ảnh Bệnh
                         
-                        # Xác định ngưỡng cần dùng dựa trên kết quả AI đoán
                         current_threshold = HEALTHY_THRESHOLD if pred.item() == 4 else DISEASE_THRESHOLD
-
+                        
                         if conf_score < current_threshold:
                             vn_name = "Không đủ dữ kiện"
                             en_name = "Low Confidence"
                             css_class = "nodata"
                             pred_id = -1 
-                            # Hiển thị mức tự tin và Ngưỡng yêu cầu để dễ giải thích
                             conf_html = f'<div class="conf-score" style="color: #d32f2f;">Đạt: {round(conf_score*100, 2)}% (Cần > {int(current_threshold*100)}%)</div>'
                         else:
                             full_name = CLASS_NAMES[pred.item()]
@@ -145,12 +139,25 @@ if images_to_process:
                             css_class = "healthy" if pred.item() == 4 else "disease"
                             pred_id = pred.item()
                             conf_html = f'<div class="conf-score">Tự tin: {round(conf_score*100, 2)}%</div>'
+                        
+                        file_name_display = file.name if hasattr(file, 'name') and "camera_input" not in file.name else "Ảnh từ Camera"
+                        
+                        results_list.append({
+                            "Tên file": file_name_display,
+                            "Chẩn đoán": vn_name,
+                            "Tiếng Anh": en_name,
+                            "Mã bệnh": pred_id,
+                            "conf_html": conf_html,
+                            "img_data": img,
+                            "css_class": css_class
+                        })
+                    except Exception as e:
+                        st.error(f"Lỗi khi đọc file ảnh: {e}")
 
-            # --- 5. BẢNG THỐNG KÊ (ĐÃ FIX AN TOÀN) ---
-            # Chỉ hiển thị thống kê nếu list đã có kết quả (Fix triệt để lỗi KeyError)
+            # --- 5. BẢNG THỐNG KÊ ---
             if len(results_list) > 0:
                 df = pd.DataFrame(results_list)
-                valid_df = df[df['Mã bệnh'] != -1] # Chỉ thống kê trên những lá sắn hợp lệ
+                valid_df = df[df['Mã bệnh'] != -1]
                 
                 st.subheader("📈 Thống kê tổng quan")
                 m1, m2, m3 = st.columns(3)
@@ -158,7 +165,7 @@ if images_to_process:
                 
                 if len(valid_df) > 0:
                     health_rate = len(valid_df[valid_df['Mã bệnh']==4]) / len(valid_df) * 100
-                    m2.metric("Tỷ lệ cây khỏe (Trên ảnh hợp lệ)", f"{health_rate:.1f}%")
+                    m2.metric("Tỷ lệ cây khỏe (Hợp lệ)", f"{health_rate:.1f}%")
                     most_common = valid_df['Chẩn đoán'].mode()[0]
                     m3.metric("Loại phổ biến nhất", most_common)
                 else:
