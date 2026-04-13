@@ -17,7 +17,7 @@ st.set_page_config(
 )
 
 # Thêm Ngưỡng Tự Tin (Dưới 60% sẽ loại bỏ)
-CONF_THRESHOLD = 0.60 
+CONF_THRESHOLD = 0.50
 
 # CSS Custom cho thẻ kết quả
 st.markdown("""
@@ -47,7 +47,7 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-st.title("🌱 Dashboard Chẩn Đoán Bệnh Lá Sắn")
+st.title("🌱 Dashboard Chẩn Đoán Bệnh Lá Cây Sắn")
 st.write("Hệ thống Trí tuệ Nhân tạo hỗ trợ phân tích và nhận diện bệnh tự động.")
 
 # --- 1. THÔNG SỐ VÀ DANH SÁCH BỆNH ---
