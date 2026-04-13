@@ -16,9 +16,6 @@ st.set_page_config(
     layout="wide"
 )
 
-# Thêm Ngưỡng Tự Tin (Dưới 40% sẽ loại bỏ)
-CONF_THRESHOLD = 0.40
-
 # CSS Custom cho thẻ kết quả
 st.markdown("""
     <style>
@@ -125,32 +122,29 @@ if images_to_process:
                         conf_score = conf.item()
                         
                         # --- BỘ LỌC NO DATA ---
-                        if conf_score < CONF_THRESHOLD:
+                        conf_score = conf.item()
+                        
+                        # --- BỘ LỌC NO DATA (NGƯỠNG KÉP) ---
+                        # Đặt 2 ngưỡng khác nhau
+                        HEALTHY_THRESHOLD = 0.60  # Ép ảnh Khỏe mạnh phải tự tin cao (Chặn ảnh rác)
+                        DISEASE_THRESHOLD = 0.40  # Mở cửa cho ảnh Bệnh với tự tin thấp hơn
+                        
+                        # Xác định ngưỡng cần dùng dựa trên kết quả AI đoán
+                        current_threshold = HEALTHY_THRESHOLD if pred.item() == 4 else DISEASE_THRESHOLD
+
+                        if conf_score < current_threshold:
                             vn_name = "Không đủ dữ kiện"
                             en_name = "Low Confidence"
                             css_class = "nodata"
                             pred_id = -1 
-                            conf_html = f'<div class="conf-score" style="color: #d32f2f;">Chỉ đạt: {round(conf_score*100, 2)}% (Dưới ngưỡng)</div>'
+                            # Hiển thị mức tự tin và Ngưỡng yêu cầu để dễ giải thích
+                            conf_html = f'<div class="conf-score" style="color: #d32f2f;">Đạt: {round(conf_score*100, 2)}% (Cần > {int(current_threshold*100)}%)</div>'
                         else:
                             full_name = CLASS_NAMES[pred.item()]
                             en_name, vn_name = full_name.split(' - ')
                             css_class = "healthy" if pred.item() == 4 else "disease"
                             pred_id = pred.item()
                             conf_html = f'<div class="conf-score">Tự tin: {round(conf_score*100, 2)}%</div>'
-                        
-                        file_name_display = file.name if hasattr(file, 'name') and "camera_input" not in file.name else "Ảnh từ Camera"
-                        
-                        results_list.append({
-                            "Tên file": file_name_display,
-                            "Chẩn đoán": vn_name,
-                            "Tiếng Anh": en_name,
-                            "Mã bệnh": pred_id,
-                            "conf_html": conf_html,
-                            "img_data": img,
-                            "css_class": css_class
-                        })
-                    except Exception as e:
-                        st.error(f"Lỗi khi đọc file ảnh: {e}")
 
             # --- 5. BẢNG THỐNG KÊ (ĐÃ FIX AN TOÀN) ---
             # Chỉ hiển thị thống kê nếu list đã có kết quả (Fix triệt để lỗi KeyError)
