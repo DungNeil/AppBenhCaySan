@@ -16,6 +16,13 @@ st.set_page_config(
     layout="wide"
 )
 
+# --- QUẢN LÝ TRẠNG THÁI (SESSION STATE) ---
+# Tạo "chìa khóa" để reset công cụ tải ảnh
+if "uploader_key" not in st.session_state:
+    st.session_state.uploader_key = 0
+if "camera_key" not in st.session_state:
+    st.session_state.camera_key = 0
+
 # CSS Custom cho thẻ kết quả
 st.markdown("""
     <style>
@@ -46,6 +53,7 @@ st.markdown("""
 
 st.title("🌱 Dashboard Chẩn Đoán Bệnh Lá Sắn")
 st.write("Hệ thống Trí tuệ Nhân tạo hỗ trợ phân tích và nhận diện bệnh tự động.")
+st.warning("⚠️ **Lưu ý:** Hệ thống phân loại đóng (Closed-world Classification) được huấn luyện chuyên biệt trên hình ảnh Lá Sắn. Việc tải lên các hình ảnh không liên quan (đồ vật, màn hình máy tính, con người...) có thể dẫn đến hiện tượng 'Độ tự tin ảo' (Overconfidence) của hàm Softmax.")
 
 # --- 1. THÔNG SỐ VÀ DANH SÁCH BỆNH ---
 CLASS_NAMES = [
@@ -85,13 +93,18 @@ with st.sidebar:
     tab1, tab2 = st.tabs(["📁 Tải ảnh", "📸 Camera"])
     
     with tab1:
-        uploaded_files = st.file_uploader("Kéo thả ảnh vào đây...", type=['jpg','png','jpeg'], accept_multiple_files=True)
+        # Gắn chìa khóa vào hộp tải ảnh
+        uploaded_files = st.file_uploader("Kéo thả ảnh vào đây...", type=['jpg','png','jpeg'], accept_multiple_files=True, key=f"uploader_{st.session_state.uploader_key}")
     with tab2:
-        camera_upload = st.camera_input("Chụp ảnh tại vườn")
+        # Gắn chìa khóa vào camera
+        camera_upload = st.camera_input("Chụp ảnh tại vườn", key=f"camera_{st.session_state.camera_key}")
         
     st.markdown("---")
     if st.button("🗑️ Xóa dữ liệu & Làm mới"):
         st.cache_resource.clear()
+        # Đổi chìa khóa mới để ép Streamlit xóa sạch ảnh cũ trên giao diện
+        st.session_state.uploader_key += 1
+        st.session_state.camera_key += 1
         st.rerun()
 
 images_to_process = []
@@ -121,18 +134,15 @@ if images_to_process:
                         
                         conf_score = conf.item()
                         
-                        # --- BỘ LỌC NO DATA (NGƯỠNG KÉP) ---
-                        HEALTHY_THRESHOLD = 0.60  # Ép ảnh Khỏe mạnh phải tự tin cao (Chặn ảnh rác)
-                        DISEASE_THRESHOLD = 0.40  # Mở cửa cho ảnh Bệnh
+                        # --- BỘ LỌC NO DATA ---
+                        CONF_THRESHOLD = 0.50  # Ngưỡng an toàn chung 50%
                         
-                        current_threshold = HEALTHY_THRESHOLD if pred.item() == 4 else DISEASE_THRESHOLD
-                        
-                        if conf_score < current_threshold:
+                        if conf_score < CONF_THRESHOLD:
                             vn_name = "Không đủ dữ kiện"
-                            en_name = "Low Confidence"
+                            en_name = "Low Confidence / OOD"
                             css_class = "nodata"
                             pred_id = -1 
-                            conf_html = f'<div class="conf-score" style="color: #d32f2f;">Đạt: {round(conf_score*100, 2)}% (Cần > {int(current_threshold*100)}%)</div>'
+                            conf_html = f'<div class="conf-score" style="color: #d32f2f;">Đạt: {round(conf_score*100, 2)}% (Cần > 50%)</div>'
                         else:
                             full_name = CLASS_NAMES[pred.item()]
                             en_name, vn_name = full_name.split(' - ')
