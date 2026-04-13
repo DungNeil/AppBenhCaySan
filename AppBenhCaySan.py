@@ -52,7 +52,7 @@ st.markdown("""
 
 st.title("🌱 Dashboard Chẩn Đoán Bệnh Lá Sắn")
 st.write("Hệ thống Trí tuệ Nhân tạo hỗ trợ phân tích và nhận diện bệnh tự động.")
-st.warning("⚠️ **Lưu ý:** Hệ thống phân loại đóng được huấn luyện chuyên biệt trên hình ảnh Lá Sắn. Việc tải lên các hình ảnh không liên quan có thể dẫn đến hiện tượng 'Độ tự tin ảo'.")
+st.warning("⚠️ **Lưu ý:** Hệ thống nhận diện bệnh tự động được huấn luyện chuyên biệt trên hình ảnh Lá Sắn. Việc tải lên các hình ảnh không liên quan có thể dẫn đến hiện tượng 'Độ tự tin ảo'.")
 
 # --- 1. THÔNG SỐ VÀ DANH SÁCH BỆNH ---
 CLASS_NAMES = [
@@ -137,7 +137,7 @@ if images_to_process:
                         current_threshold = HEALTHY_THRESHOLD if pred.item() == 4 else DISEASE_THRESHOLD
                         
                         if conf_score < current_threshold:
-                            vn_name = "Không đủ dữ kiện"
+                            vn_name = "Vui lòng chọn ảnh lá sắn"
                             en_name = "Low Confidence / OOD"
                             css_class = "nodata"
                             pred_id = -1 
