@@ -17,7 +17,7 @@ st.set_page_config(
 )
 
 # Thêm Ngưỡng Tự Tin (Dưới 60% sẽ loại bỏ)
-CONF_THRESHOLD = 0.50
+CONF_THRESHOLD = 0.60
 
 # CSS Custom cho thẻ kết quả
 st.markdown("""
@@ -122,32 +122,21 @@ if images_to_process:
                         conf, pred = torch.max(prob, 1)
                     
                     conf_score = conf.item()
-                    
+        
                     # --- BỘ LỌC NO DATA ---
                     if conf_score < CONF_THRESHOLD:
-                        vn_name = "Không có dữ liệu hợp lệ"
-                        en_name = "No Data"
+                        vn_name = "Không đủ dữ kiện"
+                        en_name = "Low Confidence"
                         css_class = "nodata"
                         pred_id = -1 
-                        conf_html = '<div class="conf-score">Vui lòng tải ảnh lá sắn</div>'
+                        # Hiển thị luôn điểm tự tin bị loại để dễ debug
+                        conf_html = f'<div class="conf-score" style="color: #d32f2f;">Chỉ đạt: {round(conf_score*100, 2)}% (Dưới ngưỡng)</div>'
                     else:
                         full_name = CLASS_NAMES[pred.item()]
                         en_name, vn_name = full_name.split(' - ')
                         css_class = "healthy" if pred.item() == 4 else "disease"
                         pred_id = pred.item()
                         conf_html = f'<div class="conf-score">Tự tin: {round(conf_score*100, 2)}%</div>'
-                    
-                    file_name_display = file.name if hasattr(file, 'name') and "camera_input" not in file.name else "Ảnh từ Camera"
-                    
-                    results_list.append({
-                        "Tên file": file_name_display,
-                        "Chẩn đoán": vn_name,
-                        "Tiếng Anh": en_name,
-                        "Mã bệnh": pred_id,
-                        "conf_html": conf_html, # Lưu riêng đoạn mã HTML của phần trăm
-                        "img_data": img,
-                        "css_class": css_class
-                    })
 
             # --- 5. BẢNG THỐNG KÊ ---
             df = pd.DataFrame(results_list)
