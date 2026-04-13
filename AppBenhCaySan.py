@@ -16,8 +16,8 @@ st.set_page_config(
     layout="wide"
 )
 
-# Thêm Ngưỡng Tự Tin (Dưới 60% sẽ loại bỏ)
-CONF_THRESHOLD = 0.60
+# Thêm Ngưỡng Tự Tin (Dưới 40% sẽ loại bỏ)
+CONF_THRESHOLD = 0.40
 
 # CSS Custom cho thẻ kết quả
 st.markdown("""
@@ -114,71 +114,86 @@ if images_to_process:
             
             with st.spinner('AI đang quét và phân tích dữ liệu...'):
                 for file in images_to_process:
-                    img = Image.open(file)
-                    input_tensor = preprocess(img).to(device)
-                    with torch.no_grad():
-                        output = model(input_tensor)
-                        prob = torch.nn.functional.softmax(output, dim=1)
-                        conf, pred = torch.max(prob, 1)
-                    
-                    conf_score = conf.item()
-        
-                    # --- BỘ LỌC NO DATA ---
-                    if conf_score < CONF_THRESHOLD:
-                        vn_name = "Không đủ dữ kiện"
-                        en_name = "Low Confidence"
-                        css_class = "nodata"
-                        pred_id = -1 
-                        # Hiển thị luôn điểm tự tin bị loại để dễ debug
-                        conf_html = f'<div class="conf-score" style="color: #d32f2f;">Chỉ đạt: {round(conf_score*100, 2)}% (Dưới ngưỡng)</div>'
-                    else:
-                        full_name = CLASS_NAMES[pred.item()]
-                        en_name, vn_name = full_name.split(' - ')
-                        css_class = "healthy" if pred.item() == 4 else "disease"
-                        pred_id = pred.item()
-                        conf_html = f'<div class="conf-score">Tự tin: {round(conf_score*100, 2)}%</div>'
+                    try: # Thêm vòng bảo vệ: Nếu ảnh bị lỗi, bỏ qua ảnh đó chứ không sập App
+                        img = Image.open(file)
+                        input_tensor = preprocess(img).to(device)
+                        with torch.no_grad():
+                            output = model(input_tensor)
+                            prob = torch.nn.functional.softmax(output, dim=1)
+                            conf, pred = torch.max(prob, 1)
+                        
+                        conf_score = conf.item()
+                        
+                        # --- BỘ LỌC NO DATA ---
+                        if conf_score < CONF_THRESHOLD:
+                            vn_name = "Không đủ dữ kiện"
+                            en_name = "Low Confidence"
+                            css_class = "nodata"
+                            pred_id = -1 
+                            conf_html = f'<div class="conf-score" style="color: #d32f2f;">Chỉ đạt: {round(conf_score*100, 2)}% (Dưới ngưỡng)</div>'
+                        else:
+                            full_name = CLASS_NAMES[pred.item()]
+                            en_name, vn_name = full_name.split(' - ')
+                            css_class = "healthy" if pred.item() == 4 else "disease"
+                            pred_id = pred.item()
+                            conf_html = f'<div class="conf-score">Tự tin: {round(conf_score*100, 2)}%</div>'
+                        
+                        file_name_display = file.name if hasattr(file, 'name') and "camera_input" not in file.name else "Ảnh từ Camera"
+                        
+                        results_list.append({
+                            "Tên file": file_name_display,
+                            "Chẩn đoán": vn_name,
+                            "Tiếng Anh": en_name,
+                            "Mã bệnh": pred_id,
+                            "conf_html": conf_html,
+                            "img_data": img,
+                            "css_class": css_class
+                        })
+                    except Exception as e:
+                        st.error(f"Lỗi khi đọc file ảnh: {e}")
 
-            # --- 5. BẢNG THỐNG KÊ ---
-            df = pd.DataFrame(results_list)
-            valid_df = df[df['Mã bệnh'] != -1] # Chỉ thống kê trên những lá sắn hợp lệ
-            
-            st.subheader("📈 Thống kê tổng quan")
-            m1, m2, m3 = st.columns(3)
-            m1.metric("Tổng số ảnh đã tải", len(df))
-            
-            if len(valid_df) > 0:
-                health_rate = len(valid_df[valid_df['Mã bệnh']==4]) / len(valid_df) * 100
-                m2.metric("Tỷ lệ cây khỏe (Trên ảnh hợp lệ)", f"{health_rate:.1f}%")
-                most_common = valid_df['Chẩn đoán'].mode()[0]
-                m3.metric("Loại phổ biến nhất", most_common)
-            else:
-                m2.metric("Tỷ lệ cây khỏe", "N/A")
-                m3.metric("Loại phổ biến nhất", "Không có dữ liệu hợp lệ")
-
-            st.divider()
-
-            # --- 6. HIỂN THỊ LƯỚI ẢNH 5 CỘT ---
-            st.subheader("🖼️ Chi tiết từng mẫu ảnh")
-            chunk_size = 5
-            for i in range(0, len(results_list), chunk_size):
-                cols = st.columns(5)
-                chunk = results_list[i : i + chunk_size]
+            # --- 5. BẢNG THỐNG KÊ (ĐÃ FIX AN TOÀN) ---
+            # Chỉ hiển thị thống kê nếu list đã có kết quả (Fix triệt để lỗi KeyError)
+            if len(results_list) > 0:
+                df = pd.DataFrame(results_list)
+                valid_df = df[df['Mã bệnh'] != -1] # Chỉ thống kê trên những lá sắn hợp lệ
                 
-                for j, res in enumerate(chunk):
-                    with cols[j]:
-                        st.markdown(f'<div class="file-name" title="{res["Tên file"]}">{res["Tên file"]}</div>', unsafe_allow_html=True)
-                        
-                        # ẢNH VẪN HIỂN THỊ BÌNH THƯỜNG Ở ĐÂY
-                        st.image(res['img_data'], use_container_width=True)
-                        
-                        # HIỂN THỊ THẺ KẾT QUẢ
-                        st.markdown(f"""
-                            <div class="result-card {res['css_class']}">
-                                <div class="vn-name">{res['Chẩn đoán']}</div>
-                                <div class="en-name">{res['Tiếng Anh']}</div>
-                                {res['conf_html']}
-                            </div>
-                        """, unsafe_allow_html=True)
+                st.subheader("📈 Thống kê tổng quan")
+                m1, m2, m3 = st.columns(3)
+                m1.metric("Tổng số ảnh đã tải", len(df))
+                
+                if len(valid_df) > 0:
+                    health_rate = len(valid_df[valid_df['Mã bệnh']==4]) / len(valid_df) * 100
+                    m2.metric("Tỷ lệ cây khỏe (Trên ảnh hợp lệ)", f"{health_rate:.1f}%")
+                    most_common = valid_df['Chẩn đoán'].mode()[0]
+                    m3.metric("Loại phổ biến nhất", most_common)
+                else:
+                    m2.metric("Tỷ lệ cây khỏe", "N/A")
+                    m3.metric("Loại phổ biến nhất", "Không có dữ liệu hợp lệ")
+
+                st.divider()
+
+                # --- 6. HIỂN THỊ LƯỚI ẢNH 5 CỘT ---
+                st.subheader("🖼️ Chi tiết từng mẫu ảnh")
+                chunk_size = 5
+                for i in range(0, len(results_list), chunk_size):
+                    cols = st.columns(5)
+                    chunk = results_list[i : i + chunk_size]
+                    
+                    for j, res in enumerate(chunk):
+                        with cols[j]:
+                            st.markdown(f'<div class="file-name" title="{res["Tên file"]}">{res["Tên file"]}</div>', unsafe_allow_html=True)
+                            st.image(res['img_data'], use_container_width=True)
+                            
+                            st.markdown(f"""
+                                <div class="result-card {res['css_class']}">
+                                    <div class="vn-name">{res['Chẩn đoán']}</div>
+                                    <div class="en-name">{res['Tiếng Anh']}</div>
+                                    {res['conf_html']}
+                                </div>
+                            """, unsafe_allow_html=True)
+            else:
+                st.warning("Chưa có dữ liệu để phân tích. Hãy tải ảnh lên và bấm nút.")
 
 else:
     st.markdown("""
